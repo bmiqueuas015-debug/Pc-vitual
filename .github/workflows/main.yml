@@ -1,0 +1,46 @@
+name: Windows-RDP-Virtual
+
+on: 
+  workflow_dispatch: # Permite ativar o PC Virtual manualmente pelo botão
+
+jobs:
+  build:
+    runs-on: windows-latest # Usa o servidor oficial Windows do GitHub
+    timeout-minutes: 360 # Tempo máximo limite do GitHub (6 horas)
+
+    steps:
+    - name: Baixando e Configurando o Ngrok
+      run: |
+        Invoke-WebRequest https://equinox.io -OutFile ngrok.zip
+        Expand-Archive ngrok.zip
+        
+    - name: Autenticando no Ngrok
+      run: |
+        .\ngrok\ngrok.exe config add-authtoken ${{ secrets.NGROK_AUTH_TOKEN }}
+      # Puxa o seu Token de forma segura das configurações do repositório
+
+    - name: Habilitando o Acesso Remoto (RDP)
+      run: |
+        Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0
+        Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
+        Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "UserAuthentication" -Value 1
+      # Abre as portas internas do Windows e o Firewall para receber conexão
+
+    - name: Criando Usuário e Senha do PC
+      run: |
+        $Password = ConvertTo-SecureString "SenhaForte123!" -AsPlainText -Force
+        New-LocalUser "VirtualPC" -Password $Password -Description "Usuario do PC Virtual"
+        Add-LocalGroupMember -Group "Administrators" -Member "VirtualPC"
+      # Cria o usuário "VirtualPC" com privilégios totais de Administrador
+
+    - name: Iniciando o Túnel e Mantendo o PC Ligado
+      run: |
+        Start-Process .\ngrok\ngrok.exe -ArgumentList "tcp 3389"
+        Write-Host "PC Virtual Iniciado com Sucesso!"
+        cat << 'EOF' > loop.ps1
+        for ($i=1; $i -le 360; $i++) {
+            Start-Sleep -Seconds 60
+        }
+        EOF
+        .\loop.ps1
+      # Cria a ponte de conexão pública e força o script a ficar aberto por até 6 horas
